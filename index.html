@@ -190,6 +190,16 @@
   .item .m{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
   .item .m .w{color:var(--red)}
 
+  /* ---------- sync ---------- */
+  .sync-row{display:flex;gap:10px;flex-wrap:wrap}
+  .sync-row input{flex:1;min-width:220px;font-family:inherit;font-size:13.5px;padding:9px 12px;
+    border:1px solid var(--line);border-radius:9px;outline:none;background:#fff;color:#3D4A5C}
+  .sync-row input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(0,163,152,.10)}
+  .sync-log{margin-top:14px;padding:11px 14px;border-radius:9px;background:#F7F9FC;border:1px solid var(--line);
+    font-size:12.5px;color:#4B5A70;white-space:pre-wrap;line-height:1.7}
+  .sync-log.ok{background:var(--green-l);border-color:#BFE6E1;color:var(--green-d)}
+  .sync-log.err{background:var(--red-l);border-color:#F2C9C9;color:var(--red)}
+
   /* ---------- stats ---------- */
   .stat-line{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px dashed #EDF1F6}
   .stat-line:last-child{border-bottom:none}
@@ -239,6 +249,7 @@
     <button data-view="setup"><span class="ico">▤</span>开始练习</button>
     <button data-view="wrong"><span class="ico">✕</span>错题本</button>
     <button data-view="stats"><span class="ico">▨</span>学情统计</button>
+    <button data-view="sync"><span class="ico">⇅</span>云同步</button>
   </div>
   <div class="side-foot">
     题源：7 个章节练习 + 5 套模拟题（A–E）<br>
@@ -393,6 +404,41 @@
       <div class="panel" id="statTopic"></div>
     </section>
 
+    <!-- ============ SYNC ============ -->
+    <section id="v-sync" hidden>
+      <div class="panel">
+        <h4>跨设备同步 / 备份</h4>
+        <p class="muted" style="font-size:13px;margin:6px 0 14px">
+          答题记录默认只存在本机浏览器。开启同步后，点一次「立即同步」就会把本机记录<b>合并</b>写入一个
+          <b>私有 GitHub Gist</b>；在其他设备粘贴同一个 Gist ID 与 Token，拉取即可继续。
+          记录只存在你自己的 GitHub 账号里，不经过任何第三方服务器。
+        </p>
+        <div class="sync-row">
+          <input id="syncToken" type="password" autocomplete="off" placeholder="GitHub Token（仅需 gist 权限）">
+          <input id="syncGist" autocomplete="off" placeholder="Gist ID（留空则自动创建）">
+        </div>
+        <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:13px">
+          <button class="btn primary sm" onclick="syncNow()">立即同步（合并上传）</button>
+          <button class="btn line sm" onclick="syncPull()">仅从云端拉取</button>
+          <button class="btn line sm" onclick="exportProgress()">导出备份文件</button>
+          <button class="btn line sm" onclick="document.getElementById('impFile').click()">导入备份文件</button>
+          <input type="file" id="impFile" accept=".json,application/json" hidden onchange="importProgress(this)">
+          <button class="btn line sm" onclick="syncForget()">断开本机</button>
+        </div>
+        <div id="syncLog" class="sync-log">尚未同步。</div>
+      </div>
+
+      <div class="sec-h"><h3>领取 Token 的三步</h3><span>一次配置，长期可用</span></div>
+      <div class="panel">
+        <ul>
+          <li>GitHub 右上角头像 → <b>Settings</b> → 左侧到底 <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Tokens (classic)</b> → <b>Generate new token (classic)</b></li>
+          <li>Note 随便填（如 npdp-sync），Expiration 选 90 天，<b>只勾选 gist 这一项</b>，其它一律不勾</li>
+          <li>点 Generate，复制 <code>ghp_</code> 开头的串，粘贴到上面的输入框 → 点「立即同步」。首次会自动创建一个私有 Gist，把生成的 Gist ID 记下来，在另一台设备填进去即可</li>
+        </ul>
+        <p class="muted" style="font-size:12.5px;margin:10px 0 0">Token 只保存在本机浏览器（localStorage），不会上传到任何地方；换电脑或清理浏览器数据后需要重新粘贴。「断开本机」只清除本机保存的 Token 与 Gist ID，云端记录不受影响。</p>
+      </div>
+    </section>
+
     <!-- ============ EXAM RESULT ============ -->
     <section id="v-result" hidden>
       <div class="result-hero">
@@ -517,18 +563,19 @@ function progOf(id){ return ST.prog[id] || null; }
 function isFav(id){ return !!ST.fav[id]; }
 
 /* ================= navigation ================= */
-const VIEWS = {home:'总览', setup:'开始练习', practice:'练习中', wrong:'错题本', stats:'学情统计', result:'考试结果', search:'搜索结果'};
+const VIEWS = {home:'总览', setup:'开始练习', practice:'练习中', wrong:'错题本', stats:'学情统计', sync:'云同步', result:'考试结果', search:'搜索结果'};
 const SUBS = {
   home:'按考纲七大模块分类的练习题库',
   setup:'选择题源、模块与出题顺序',
   practice:'作答即判分，附考点与解析',
   wrong:'做错过或尚未做对的题目',
   stats:'正确率、薄弱考点与进度',
+  sync:'答题记录跨设备同步与备份',
   result:'本次模拟考的分模块表现',
   search:'在题干、选项、考点与解析中检索'
 };
 function go(v){
-  ['home','setup','practice','wrong','stats','result','search'].forEach(k=>{
+  ['home','setup','practice','wrong','stats','sync','result','search'].forEach(k=>{
     const el = $('#v-'+k); if(el) el.hidden = (k!==v);
   });
   $('#tbTitle').textContent = VIEWS[v] || '';
@@ -539,6 +586,7 @@ function go(v){
   if(v==='wrong') renderWrong();
   if(v==='stats') renderStats();
   if(v==='setup') renderSetup();
+  if(v==='sync') renderSync();
 }
 
 /* ================= home ================= */
@@ -981,6 +1029,152 @@ function doSearch(kw){
   });
   go('search');
   $('#q').value = kw;
+}
+
+/* ================= sync (GitHub Gist) ================= */
+function syncCfg(){ if(!ST.sync) ST.sync = {}; return ST.sync; }
+function setLog(msg, kind){
+  const el = $('#syncLog'); if(!el) return;
+  el.textContent = msg;
+  el.className = 'sync-log' + (kind ? ' '+kind : '');
+  const c = syncCfg(); c.lastMsg = msg; c.lastKind = kind || ''; save();
+}
+function renderSync(){
+  const c = syncCfg();
+  $('#syncToken').value = c.token || '';
+  $('#syncGist').value  = c.gistId || '';
+  const el = $('#syncLog');
+  el.className = 'sync-log' + (c.lastKind? ' '+c.lastKind : '');
+  el.textContent = c.lastMsg || '尚未同步。首次点「立即同步」会自动创建私有 Gist；把生成的 Gist ID 记到另一台设备即可。';
+}
+function snapshot(){ return {v:1, app:'npdp-bank', updated:Date.now(), prog:ST.prog, fav:ST.fav}; }
+
+function mergeData(remote){
+  if(!remote || typeof remote!=='object') return 0;
+  const rp = remote.prog || {}, rf = remote.fav || {};
+  let added = 0;
+  for(const id in rp){
+    const a = ST.prog[id], b = rp[id];
+    if(!b) continue;
+    if(!a){ ST.prog[id] = b; added++; continue; }
+    const na = a.n||0, nb = b.n||0;
+    const newer = (b.ts||0) > (a.ts||0) ? b : a;
+    ST.prog[id] = {
+      n: Math.max(na, nb),
+      r: Math.max(a.r||0, b.r||0),
+      w: Math.max(a.w||0, b.w||0),
+      last: newer.last, lastOk: newer.lastOk, ts: Math.max(a.ts||0, b.ts||0)
+    };
+  }
+  for(const id in rf) if(!ST.fav[id]){ ST.fav[id] = 1; added++; }
+  save();
+  return added;
+}
+
+async function ghApi(path, opt){
+  const c = syncCfg();
+  const headers = Object.assign({
+    'Accept':'application/vnd.github+json',
+    'Authorization':'Bearer ' + (c.token||''),
+    'Content-Type':'application/json'
+  }, (opt && opt.headers) || {});
+  const r = await fetch('https://api.github.com' + path, Object.assign({}, opt, {headers}));
+  if(!r.ok){
+    let msg = r.status + ' ' + r.statusText;
+    try{ const j = await r.json(); if(j && j.message) msg = r.status + ' ' + j.message; }catch(e){}
+    throw new Error(msg);
+  }
+  if(r.status === 204) return null;
+  return r.json();
+}
+
+async function pullRemote(){
+  const c = syncCfg();
+  const g = await ghApi('/gists/' + c.gistId, {method:'GET'});
+  const files = g.files || {};
+  const f = files['npdp-progress.json'] || files[Object.keys(files)[0]];
+  if(!f) throw new Error('该 Gist 里没有进度文件');
+  let content = f.content;
+  if(f.truncated && f.raw_url){ content = await (await fetch(f.raw_url)).text(); }
+  return JSON.parse(content);
+}
+
+async function syncNow(){
+  const c = syncCfg();
+  c.token  = ($('#syncToken').value || '').trim();
+  c.gistId = ($('#syncGist').value || '').trim();
+  if(!c.token){ setLog('请先粘贴 GitHub Token（只需 gist 权限）。', 'err'); return; }
+  save();
+  setLog('正在同步…（先拉取云端记录合并，再上传）');
+  try{
+    if(c.gistId){
+      try{ const remote = await pullRemote(); mergeData(remote); }catch(e){ /* 首次或空 gist，忽略 */ }
+    }
+    const body = JSON.stringify({
+      description: 'NPDP 题库练习进度（自动同步 · 勿手动修改）',
+      public: false,
+      files: { 'npdp-progress.json': { content: JSON.stringify(snapshot()) } }
+    });
+    const res = c.gistId ? await ghApi('/gists/' + c.gistId, {method:'PATCH', body})
+                         : await ghApi('/gists', {method:'POST', body});
+    c.gistId = res.id;
+    $('#syncGist').value = res.id;
+    c.lastOk = true;
+    save();
+    const nQ = Object.keys(ST.prog).length, nF = Object.keys(ST.fav).length;
+    setLog(`同步完成 ✓\n本机记录：${nQ} 题作答 / ${nF} 题收藏\nGist ID：${res.id}\n（其它设备填这个 ID + 同一 Token，点「仅从云端拉取」即可）`, 'ok');
+    renderHome();
+  }catch(e){
+    c.lastOk = false; save();
+    setLog('同步失败：' + e.message + '\n常见原因：① Token 没勾 gist 权限 ② Token 已过期 ③ Gist ID 填错 ④ 网络被拦截。', 'err');
+  }
+}
+
+async function syncPull(){
+  const c = syncCfg();
+  c.token  = ($('#syncToken').value || '').trim();
+  c.gistId = ($('#syncGist').value || '').trim();
+  if(!c.token || !c.gistId){ setLog('拉取需要同时填写 Token 和 Gist ID。', 'err'); return; }
+  setLog('正在从云端拉取…');
+  try{
+    const remote = await pullRemote();
+    const added = mergeData(remote);
+    setLog(`拉取完成 ✓ 合并后共 ${Object.keys(ST.prog).length} 题作答记录（本次新增/更新 ${added} 条）。`, 'ok');
+    renderHome();
+  }catch(e){
+    setLog('拉取失败：' + e.message, 'err');
+  }
+}
+
+function syncForget(){
+  const c = syncCfg();
+  delete c.token; delete c.gistId; delete c.lastMsg; delete c.lastKind;
+  save(); renderSync();
+  setLog('已断开本机。云端 Gist 与其中的记录不会被删除。');
+}
+function exportProgress(){
+  const blob = new Blob([JSON.stringify(snapshot(), null, 1)], {type:'application/json'});
+  const a = document.createElement('a');
+  const d = new Date(), p = n => String(n).padStart(2,'0');
+  a.href = URL.createObjectURL(blob);
+  a.download = `npdp-progress-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.json`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+  setLog('已导出备份文件（可发到微信/网盘，在另一台设备用「导入备份文件」恢复）。', 'ok');
+}
+function importProgress(input){
+  const f = input.files && input.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const data = JSON.parse(r.result);
+      const added = mergeData(data);
+      setLog(`导入成功 ✓ 合并后共 ${Object.keys(ST.prog).length} 题记录（新增/更新 ${added} 条）。`, 'ok');
+      renderHome();
+    }catch(e){ setLog('导入失败：文件不是有效的备份 JSON。', 'err'); }
+  };
+  r.readAsText(f);
+  input.value = '';
 }
 
 /* ================= boot ================= */
