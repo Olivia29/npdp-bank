@@ -171,16 +171,22 @@
   .sheet.show{display:flex}
   .sheet .box{background:#fff;border-radius:14px;max-width:720px;width:100%;max-height:82vh;
     display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.2)}
-  .sheet .hd{display:flex;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .sheet .hd{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line)}
   .sheet .hd h3{margin:0;font-size:15px}
+  .sheet-stat{font-size:12px;color:var(--muted)}
+  .lg{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block;border:1px solid var(--line);background:#fff}
+  .dot.ok{background:var(--green-l);border-color:#A9DED8}
+  .dot.no{background:var(--red-l);border-color:#E7A3A3}
+  .dot.un{background:#fff;border-color:#D6DEEA}
   .sheet .bd{padding:18px 20px;overflow:auto}
   .grid{display:flex;flex-wrap:wrap;gap:8px}
   .grid button{width:40px;height:36px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;
     background:#fff;color:#54637A;font-weight:600}
   .grid button.cur{outline:2px solid var(--green);outline-offset:1px}
-  .grid button.ok{background:var(--green-l);border-color:#A9DED8;color:var(--green-d)}
-  .grid button.no{background:var(--red-l);border-color:#F0C4C4;color:var(--red)}
-  .grid button.done{background:#EEF2F7}
+  .grid button.ok{background:#E6F6F4;border-color:#8FD3CB;color:#00786F;font-weight:700}
+  .grid button.no{background:#FDEDED;border-color:#E59A9A;color:#C03434;font-weight:700}
+  .grid button.done{background:#EDF2F9;border-color:#C9D6E6;color:#3D5B80;font-weight:700}
 
   /* ---------- list rows (wrong / search) ---------- */
   .list{display:flex;flex-direction:column;gap:10px}
@@ -469,7 +475,11 @@
   <div class="box">
     <div class="hd">
       <h3>答题卡</h3>
+      <span class="sheet-stat" id="sheetStat"></span>
       <div class="spacer"></div>
+      <span class="lg"><i class="dot ok"></i>正确</span>
+      <span class="lg"><i class="dot no"></i>错误</span>
+      <span class="lg"><i class="dot un"></i>未答</span>
       <button class="iconbtn" onclick="closeSheet()">✕</button>
     </div>
     <div class="bd"><div class="grid" id="sheetGrid"></div></div>
@@ -821,15 +831,32 @@ function toggleFav(){
 /* ================= sheet ================= */
 function openSheet(){
   const g = $('#sheetGrid'); g.innerHTML='';
+  let nOk=0, nNo=0, nUn=0;
   S.list.forEach((id,i)=>{
+    const q = Q.find(x=>x.id===id);
     const b = document.createElement('button');
     b.textContent = i+1;
-    const picked = S.answers[id];
-    if(picked){ b.classList.add('ok'); }
+
+    // 本次会话的作答优先；否则回落到历史记录（跨会话也能看到对错）
+    let picked = S.answers[id];
+    let ok = null;
+    if(picked){ ok = (picked === q.answer); }
+    else if(ST.prog[id] && ST.prog[id].last){ picked = ST.prog[id].last; ok = !!ST.prog[id].lastOk; }
+
+    if(!picked){ nUn++; }
+    else if(S.mode==='exam'){ b.classList.add('done'); }          // 考试中不判分
+    else if(ok){ b.classList.add('ok'); nOk++; }
+    else { b.classList.add('no'); nNo++; }
+
     if(i===S.idx) b.classList.add('cur');
+    b.title = picked ? `第 ${i+1} 题 · 你选 ${picked}${ok===false?` · 正确 ${q.answer}`:''}` : `第 ${i+1} 题 · 未作答`;
     b.onclick = ()=>{ S.idx=i; closeSheet(); renderQ(); };
     g.appendChild(b);
   });
+  const st = $('#sheetStat');
+  if(st) st.textContent = (S.mode==='exam')
+    ? `已答 ${S.list.length-nUn} · 未答 ${nUn}（交卷后判分）`
+    : `正确 ${nOk} · 错误 ${nNo} · 未答 ${nUn}`;
   $('#sheet').classList.add('show');
   updateSheetBtn();
 }
