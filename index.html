@@ -381,6 +381,7 @@
         <button class="btn line" id="btnPrev" onclick="navQ(-1)">← 上一题</button>
         <button class="btn primary" id="btnNext" onclick="navQ(1)">下一题 →</button>
         <div class="spacer"></div>
+        <button class="btn line" id="btnRedo" onclick="redoCurrent()" hidden>重做本题</button>
         <button class="btn line" id="btnSubmit" onclick="submitExam()" hidden>交卷</button>
         <button class="iconbtn" id="btnFav" title="收藏 (F)" onclick="toggleFav()">☆</button>
       </div>
@@ -690,7 +691,15 @@ function updateSetupCount(){
 function launch(list, scope, mode='practice'){
   const ids = list.map(x => (x && typeof x === 'object' && x.id != null) ? x.id : x);
   if(!ids.length){ alert('当前范围没有题目，请调整筛选条件。'); return; }
-  S.list = ids; S.idx = 0; S.answers = {}; S.scope = scope; S.mode = mode;
+  S.list = ids; S.idx = 0; S.answers = {}; S.redo = {}; S.scope = scope; S.mode = mode;
+  // 章节练习：自动跳到第一道没做过的题（接着上次继续）
+  if(mode === 'practice'){
+    const firstNew = ids.findIndex(id => !ST.prog[id]);
+    if(firstNew > 0){
+      S.idx = firstNew;
+      S.scope = scope + ` · 续第 ${firstNew + 1} 题`;
+    }
+  }
   go('practice'); renderQ();
 }
 function startPractice(){
@@ -724,7 +733,10 @@ function cur(){ return Q.find(q=>q.id===S.list[S.idx]); }
 function renderQ(){
   const q = cur(); if(!q) return;
   const p = ST.prog[q.id];
-  const picked = S.answers[q.id] || null;
+  const hist = (S.mode!=='exam' && ST.prog[q.id] && ST.prog[q.id].last && !(S.redo && S.redo[q.id]))
+      ? {letter: ST.prog[q.id].last, ok: !!ST.prog[q.id].lastOk} : null;
+  const fromHistory = !S.answers[q.id] && !!hist;
+  const picked = S.answers[q.id] || (hist ? hist.letter : null);
 
   $('#pScope').textContent = S.scope;
   if(S.mode!=='exam'){ const t=$('#pTimer'); if(t) t.hidden = true; }
@@ -762,7 +774,13 @@ function renderQ(){
       if(b.dataset.letter===picked) b.classList.add('pick');
     });
   } else if(picked){
-    reveal(q, picked, true);
+    reveal(q, picked, true, fromHistory);
+  }
+  const rb = $('#btnRedo');
+  if(rb){
+    rb.hidden = !fromHistory;
+    rb.textContent = '重做本题';
+    rb.style.opacity = 1;
   }
   updateSheetBtn();
 }
@@ -776,6 +794,7 @@ function answer(L){
     return;
   }
   if(S.answers[q.id]) return;           // already answered
+  if(S.redo) delete S.redo[q.id];
   S.answers[q.id] = L;
   const ok = (L === q.answer);
   const p = ST.prog[q.id] || {n:0,r:0,w:0};
@@ -787,7 +806,7 @@ function answer(L){
   if(S.mode==='exam'){ /* exam: no auto-advance */ }
 }
 
-function reveal(q, picked, silent){
+function reveal(q, picked, silent, review){
   const ok = picked === q.answer;
   document.querySelectorAll('#qOpts .opt').forEach(b=>{
     const L = b.dataset.letter;
@@ -798,7 +817,10 @@ function reveal(q, picked, silent){
   });
   const fb = $('#qFb');
   fb.className = 'fb show ' + (ok?'good':'bad');
-  $('#fbHead').textContent = ok ? '✓ 回答正确' : `✕ 回答错误（你选了 ${picked}，正确答案 ${q.answer}）`;
+  const when = review ? '上次作答' : '';
+  $('#fbHead').textContent = ok
+    ? (review ? `✓ 上次作答正确（${picked}）` : '✓ 回答正确')
+    : (review ? `✕ 上次作答错误（你选了 ${picked}，正确答案 ${q.answer}）` : `✕ 回答错误（你选了 ${picked}，正确答案 ${q.answer}）`);
   $('#fbAns').innerHTML = `<b>【答案】${q.answer}</b>`;
   $('#fbExp').innerHTML = `<b>【解析】</b>${esc(q.explain)}`;
   $('#fbSrc').textContent = `【考点】${q.sec? q.sec+' ' : ''}${q.topic||''} ｜ 来源：${q.srcName} #${q.num}`;
@@ -814,6 +836,15 @@ function reveal(q, picked, silent){
 function quitPractice(){
   if(S.mode==='exam' && !confirm('模拟考尚未交卷，退出将不记录成绩，确定退出？')) return;
   stopTimer(); go('home');
+}
+function redoCurrent(){
+  const q = cur();
+  if(!S.redo) S.redo = {};
+  S.redo[q.id] = 1;
+  delete S.answers[q.id];
+  renderQ();
+  const first = document.querySelector('#qOpts .opt');
+  if(first) first.focus();
 }
 function navQ(d){
   const n = S.idx + d;
