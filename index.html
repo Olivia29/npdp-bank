@@ -688,12 +688,14 @@ function updateSetupCount(){
 });
 
 /* ================= session ================= */
-function launch(list, scope, mode='practice'){
+function launch(list, scope, mode='practice', startIdx=null){
   const ids = list.map(x => (x && typeof x === 'object' && x.id != null) ? x.id : x);
   if(!ids.length){ alert('当前范围没有题目，请调整筛选条件。'); return; }
   S.list = ids; S.idx = 0; S.answers = {}; S.redo = {}; S.scope = scope; S.mode = mode;
-  // 章节练习：自动跳到第一道没做过的题（接着上次继续）
-  if(mode === 'practice'){
+  if(startIdx != null && startIdx >= 0 && startIdx < ids.length){
+    S.idx = startIdx;                       // 从指定题进入（错题本/搜索结果）
+  } else if(mode === 'practice'){
+    // 章节练习：自动跳到第一道没做过的题（接着上次继续）
     const firstNew = ids.findIndex(id => !ST.prog[id]);
     if(firstNew > 0){
       S.idx = firstNew;
@@ -904,14 +906,15 @@ function renderWrong(){
     box.innerHTML = '<div class="empty"><span class="e">◎</span>还没有错题。练习中答错的题会自动收进这里。</div>';
     return;
   }
-  ids.forEach(id=>{
+  const all = ids.map(id=>Q.find(x=>x.id===id)).filter(Boolean);
+  ids.forEach((id, idx)=>{
     const q = Q.find(x=>x.id===id), p = ST.prog[id];
     const el = document.createElement('div');
     el.className='item';
     el.innerHTML = `<div class="t">${esc(q.stem).slice(0,120)}</div>
       <div class="m"><span>${esc(q.domain)}</span><span>${esc(q.sec)} ${esc(q.topic)}</span>
       <span class="w">错 ${p.w||0} 次</span><span>正确 ${q.answer}</span></div>`;
-    el.onclick = ()=>launch([q], '错题单练 · ' + q.domain);
+    el.onclick = ()=>launch(all, `错题本 · ${all.length} 题`, 'practice', idx);
     box.appendChild(el);
   });
 }
@@ -1036,13 +1039,13 @@ function submitExam(){
   const wrong = S.list.filter(id=>{ const q=Q.find(x=>x.id===id); return S.answers[id] !== q.answer; });
   $('#rWrongCnt').textContent = `${wrong.length} 题`;
   const rw = $('#rWrong'); rw.innerHTML='';
-  wrong.slice(0,60).forEach(id=>{
-    const q = Q.find(x=>x.id===id);
+  const batch = wrong.map(id=>Q.find(x=>x.id===id)).filter(Boolean);
+  batch.slice(0,60).forEach((q, idx)=>{
     const el = document.createElement('div');
     el.className='item';
     el.innerHTML = `<div class="t">${esc(q.stem).slice(0,110)}</div>
-      <div class="m"><span>${esc(q.domain)}</span><span class="w">你选 ${S.answers[id]||'未答'}</span><span>正确 ${q.answer}</span></div>`;
-    el.onclick = ()=>launch([q], '错题单练 · ' + q.domain);
+      <div class="m"><span>${esc(q.domain)}</span><span class="w">你选 ${S.answers[q.id]||'未答'}</span><span>正确 ${q.answer}</span></div>`;
+    el.onclick = ()=>launch(batch, `本次错题 · ${batch.length} 题`, 'practice', idx);
     rw.appendChild(el);
   });
   go('result');
@@ -1077,12 +1080,12 @@ function doSearch(kw){
   ).slice(0,200);
   $('#searchCnt').textContent = hits.length? `${hits.length} 道匹配` : '没有匹配的题目';
   const box = $('#searchList'); box.innerHTML='';
-  hits.forEach(q=>{
+  hits.forEach((q, idx)=>{
     const el = document.createElement('div');
     el.className='item';
     el.innerHTML = `<div class="t">${esc(q.stem).slice(0,120)}</div>
       <div class="m"><span>${esc(q.domain)}</span><span>${esc(q.sec)} ${esc(q.topic)}</span><span>答案 ${q.answer}</span></div>`;
-    el.onclick = ()=>launch([q], '搜索单题 · ' + q.domain);
+    el.onclick = ()=>launch(hits, `搜索结果 · ${hits.length} 题`, 'practice', idx);
     box.appendChild(el);
   });
   go('search');
