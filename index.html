@@ -372,6 +372,7 @@
         <div class="opts" id="qOpts"></div>
         <div class="fb" id="qFb">
           <div class="head" id="fbHead">—</div>
+          <div class="row" id="fbPrev" style="display:none;color:#7C8899;font-size:12.5px;margin-bottom:2px"></div>
           <div class="row" id="fbAns"></div>
           <div class="row" id="fbExp"></div>
           <div class="src" id="fbSrc"></div>
@@ -392,6 +393,8 @@
       <div class="sec-h" style="margin-top:0">
         <h3>错题本</h3><span id="wrongCnt">—</span>
         <div class="spacer"></div>
+        <button class="chip" id="wfTodo" onclick="setWFilter('todo')">待攻克</button>
+        <button class="chip" id="wfAll" onclick="setWFilter('all')">全部历史</button>
         <button class="btn line sm" onclick="drillWrong()">错题重练</button>
       </div>
       <div class="list" id="wrongList"></div>
@@ -688,10 +691,12 @@ function updateSetupCount(){
 });
 
 /* ================= session ================= */
-function launch(list, scope, mode='practice', startIdx=null){
+function launch(list, scope, mode='practice', startIdx=null, opts){
   const ids = list.map(x => (x && typeof x === 'object' && x.id != null) ? x.id : x);
   if(!ids.length){ alert('当前范围没有题目，请调整筛选条件。'); return; }
   S.list = ids; S.idx = 0; S.answers = {}; S.redo = {}; S.scope = scope; S.mode = mode;
+  S.fresh = !!(opts && opts.fresh);      // true = 重新作答，不显示历史对错
+  S._prev = null;
   if(startIdx != null && startIdx >= 0 && startIdx < ids.length){
     S.idx = startIdx;                       // 从指定题进入（错题本/搜索结果）
   } else if(mode === 'practice'){
@@ -718,9 +723,10 @@ function pickN(dom, n){
 }
 function quickDrill(){ launch(shuffle(Q.slice()).slice(0,20), '随机 20 题 · 综合'); }
 function drillWrong(){
-  const ids = wrongIds();
+  const ids = currentWrongIds();
   if(!ids.length){ alert('错题本是空的，先去练习吧。'); return; }
-  launch(ids.map(id=>Q.find(q=>q.id===id)).filter(Boolean), '错题重练 · ' + ids.length + ' 题');
+  launch(ids.map(id=>Q.find(q=>q.id===id)).filter(Boolean),
+         (WFILTER==='all' ? '错题重练 · 全部历史 ' : '错题重练 · 新卷 ') + ids.length + ' 题', 'practice', 0, {fresh:true});
 }
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
@@ -735,10 +741,11 @@ function cur(){ return Q.find(q=>q.id===S.list[S.idx]); }
 function renderQ(){
   const q = cur(); if(!q) return;
   const p = ST.prog[q.id];
-  const hist = (S.mode!=='exam' && ST.prog[q.id] && ST.prog[q.id].last && !(S.redo && S.redo[q.id]))
+  const hist = (S.mode!=='exam' && !S.fresh && ST.prog[q.id] && ST.prog[q.id].last && !(S.redo && S.redo[q.id]))
       ? {letter: ST.prog[q.id].last, ok: !!ST.prog[q.id].lastOk} : null;
   const fromHistory = !S.answers[q.id] && !!hist;
   const picked = S.answers[q.id] || (hist ? hist.letter : null);
+  if(!picked){ const pv = $('#fbPrev'); if(pv){ pv.style.display='none'; pv.textContent=''; } S._prev = null; }
 
   $('#pScope').textContent = S.scope;
   if(S.mode!=='exam'){ const t=$('#pTimer'); if(t) t.hidden = true; }
@@ -797,12 +804,14 @@ function answer(L){
   }
   if(S.answers[q.id]) return;           // already answered
   if(S.redo) delete S.redo[q.id];
+  const prevRec = ST.prog[q.id] ? Object.assign({}, ST.prog[q.id]) : null;
   S.answers[q.id] = L;
   const ok = (L === q.answer);
   const p = ST.prog[q.id] || {n:0,r:0,w:0};
   p.n = (p.n||0)+1; p.r = (p.r||0) + (ok?1:0); p.w = (p.w||0) + (ok?0:1);
   p.last = L; p.lastOk = ok; p.ts = Date.now();
   ST.prog[q.id] = p; save();
+  S._prev = prevRec;
   reveal(q, L, false);
   updateSheetBtn();
   if(S.mode==='exam'){ /* exam: no auto-advance */ }
@@ -825,6 +834,14 @@ function reveal(q, picked, silent, review){
     : (review ? `✕ 上次作答错误（你选了 ${picked}，正确答案 ${q.answer}）` : `✕ 回答错误（你选了 ${picked}，正确答案 ${q.answer}）`);
   $('#fbAns').innerHTML = `<b>【答案】${q.answer}</b>`;
   $('#fbExp').innerHTML = `<b>【解析】</b>${esc(q.explain)}`;
+  const pv = $('#fbPrev');
+  if(pv){
+    const pr = S._prev;
+    if(pr && pr.last){
+      pv.style.display = 'block';
+      pv.textContent = `上次作答：${pr.last}（${pr.lastOk ? '正确' : '错误'}）· 本题累计作答 ${pr.n || 1} 次`;
+    } else { pv.style.display = 'none'; pv.textContent = ''; }
+  }
   $('#fbSrc').textContent = `【考点】${q.sec? q.sec+' ' : ''}${q.topic||''} ｜ 来源：${q.srcName} #${q.num}`;
 
   const att = Object.keys(ST.prog).length;
@@ -898,12 +915,25 @@ function closeSheet(){ $('#sheet').classList.remove('show'); }
 $('#sheet').addEventListener('click', e=>{ if(e.target.id==='sheet') closeSheet(); });
 
 /* ================= wrong book ================= */
+let WFILTER = 'todo';
+function setWFilter(f){ WFILTER = f; renderWrong(); }
+function allWrongIds(){ return Q.filter(q=>{ const p=ST.prog[q.id]; return p && (p.w||0)>0; }).map(q=>q.id); }
+function currentWrongIds(){ return WFILTER==='all' ? allWrongIds() : wrongIds(); }
+
 function renderWrong(){
-  const ids = wrongIds();
-  $('#wrongCnt').textContent = ids.length? `${ids.length} 道待攻克` : '暂无错题';
+  const ids = currentWrongIds();
+  const todoN = wrongIds().length, allN = allWrongIds().length;
+  const t = $('#wfTodo'), a = $('#wfAll');
+  if(t){ t.classList.toggle('on', WFILTER==='todo'); t.textContent = `待攻克 ${todoN}`; }
+  if(a){ a.classList.toggle('on', WFILTER==='all'); a.textContent = `全部历史 ${allN}`; }
+  $('#wrongCnt').textContent = WFILTER==='all'
+    ? (allN ? `累计错题 ${allN} 道 · 已攻克 ${allN-todoN}` : '暂无记录')
+    : (todoN ? `${todoN} 道待攻克` : '暂无待攻克错题');
   const box = $('#wrongList'); box.innerHTML='';
   if(!ids.length){
-    box.innerHTML = '<div class="empty"><span class="e">◎</span>还没有错题。练习中答错的题会自动收进这里。</div>';
+    box.innerHTML = WFILTER==='all'
+      ? '<div class="empty"><span class="e">◎</span>还没有任何错题记录。</div>'
+      : '<div class="empty"><span class="e">◎</span>待攻克的错题已清空。可切到「全部历史」回看所有错过的题。</div>';
     return;
   }
   const all = ids.map(id=>Q.find(x=>x.id===id)).filter(Boolean);
@@ -911,10 +941,12 @@ function renderWrong(){
     const q = Q.find(x=>x.id===id), p = ST.prog[id];
     const el = document.createElement('div');
     el.className='item';
+    const done = !!p.lastOk;
     el.innerHTML = `<div class="t">${esc(q.stem).slice(0,120)}</div>
       <div class="m"><span>${esc(q.domain)}</span><span>${esc(q.sec)} ${esc(q.topic)}</span>
-      <span class="w">错 ${p.w||0} 次</span><span>正确 ${q.answer}</span></div>`;
-    el.onclick = ()=>launch(all, `错题本 · ${all.length} 题`, 'practice', idx);
+      <span class="w">错 ${p.w||0} 次</span><span>正确 ${q.answer}</span>
+      <span style="color:${done?'var(--green-d)':'var(--red)'}">${done?'已攻克':'待攻克'}</span></div>`;
+    el.onclick = ()=>launch(all, `错题重练 · 新卷 ${all.length} 题`, 'practice', idx, {fresh:true});
     box.appendChild(el);
   });
 }
