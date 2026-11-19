@@ -810,6 +810,7 @@ function answer(L){
   const p = ST.prog[q.id] || {n:0,r:0,w:0};
   p.n = (p.n||0)+1; p.r = (p.r||0) + (ok?1:0); p.w = (p.w||0) + (ok?0:1);
   p.last = L; p.lastOk = ok; p.ts = Date.now();
+  if(!ok) p.wrongPick = L;              // 保留“选错的选项”供错题本回看
   ST.prog[q.id] = p; save();
   S._prev = prevRec;
   reveal(q, L, false);
@@ -942,9 +943,12 @@ function renderWrong(){
     const el = document.createElement('div');
     el.className='item';
     const done = !!p.lastOk;
+    const myPick = p.wrongPick || (!done ? (p.last || '') : '');
     el.innerHTML = `<div class="t">${esc(q.stem).slice(0,120)}</div>
       <div class="m"><span>${esc(q.domain)}</span><span>${esc(q.sec)} ${esc(q.topic)}</span>
-      <span class="w">错 ${p.w||0} 次</span><span>正确 ${q.answer}</span>
+      <span class="w">错 ${p.w||0} 次</span>
+      <span style="color:${done?'#B26B00':'var(--red)'}">${myPick ? '你选 ' + myPick : '你选 —'}${done?'（后已答对）':''}</span>
+      <span>正确 ${q.answer}</span>
       <span style="color:${done?'var(--green-d)':'var(--red)'}">${done?'已攻克':'待攻克'}</span></div>`;
     el.onclick = ()=>launch(all, `错题重练 · 新卷 ${all.length} 题`, 'practice', idx, {fresh:true});
     box.appendChild(el);
@@ -1046,6 +1050,7 @@ function submitExam(){
       const pr = ST.prog[id] || {n:0,r:0,w:0};
       pr.n=(pr.n||0)+1; pr.r=(pr.r||0)+(ok?1:0); pr.w=(pr.w||0)+(ok?0:1);
       pr.last=picked; pr.lastOk=ok; pr.ts=Date.now();
+      if(!ok) pr.wrongPick=picked;
       ST.prog[id]=pr;
     }
     perDom[q.domain] = perDom[q.domain] || {n:0, r:0};
