@@ -394,7 +394,7 @@
         <h3>错题本</h3><span id="wrongCnt">—</span>
         <div class="spacer"></div>
         <button class="chip" id="wfTodo" onclick="setWFilter('todo')">待攻克</button>
-        <button class="chip" id="wfAll" onclick="setWFilter('all')">全部历史</button>
+        <button class="chip" id="wfAll" onclick="setWFilter('all')">错题历史</button>
         <button class="btn line sm" onclick="drillWrong()">错题重练</button>
       </div>
       <div class="list" id="wrongList"></div>
@@ -726,7 +726,7 @@ function drillWrong(){
   const ids = currentWrongIds();
   if(!ids.length){ alert('错题本是空的，先去练习吧。'); return; }
   launch(ids.map(id=>Q.find(q=>q.id===id)).filter(Boolean),
-         (WFILTER==='all' ? '错题重练 · 全部历史 ' : '错题重练 · 新卷 ') + ids.length + ' 题', 'practice', 0, {fresh:true});
+         (WFILTER==='all' ? '错题重练 · 历史卷 ' : '错题重练 · 新卷 ') + ids.length + ' 题', 'practice', 0, {fresh:true});
 }
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
@@ -891,7 +891,7 @@ function openSheet(){
     let picked = S.answers[id];
     let ok = null;
     if(picked){ ok = (picked === q.answer); }
-    else if(ST.prog[id] && ST.prog[id].last){ picked = ST.prog[id].last; ok = !!ST.prog[id].lastOk; }
+    else if(!S.fresh && ST.prog[id] && ST.prog[id].last){ picked = ST.prog[id].last; ok = !!ST.prog[id].lastOk; }
 
     if(!picked){ nUn++; }
     else if(S.mode==='exam'){ b.classList.add('done'); }          // 考试中不判分
@@ -925,15 +925,15 @@ function renderWrong(){
   const todoN = wrongIds().length, allN = allWrongIds().length;
   const t = $('#wfTodo'), a = $('#wfAll');
   if(t){ t.classList.toggle('on', WFILTER==='todo'); t.textContent = `待攻克 ${todoN}`; }
-  if(a){ a.classList.toggle('on', WFILTER==='all'); a.textContent = `全部历史 ${allN}`; }
+  if(a){ a.classList.toggle('on', WFILTER==='all'); a.textContent = `错题历史 ${allN}`; }
   $('#wrongCnt').textContent = WFILTER==='all'
-    ? (allN ? `累计错题 ${allN} 道 · 已攻克 ${allN-todoN}` : '暂无记录')
+    ? (allN ? `错题历史 ${allN} 道 · 已攻克 ${allN-todoN}` : '暂无记录')
     : (todoN ? `${todoN} 道待攻克` : '暂无待攻克错题');
   const box = $('#wrongList'); box.innerHTML='';
   if(!ids.length){
     box.innerHTML = WFILTER==='all'
       ? '<div class="empty"><span class="e">◎</span>还没有任何错题记录。</div>'
-      : '<div class="empty"><span class="e">◎</span>待攻克的错题已清空。可切到「全部历史」回看所有错过的题。</div>';
+      : '<div class="empty"><span class="e">◎</span>待攻克的错题已清空。可切到「错题历史」回看所有错过的题。</div>';
     return;
   }
   const all = ids.map(id=>Q.find(x=>x.id===id)).filter(Boolean);
