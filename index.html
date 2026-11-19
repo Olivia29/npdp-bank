@@ -360,7 +360,7 @@
         <div class="prog"><i id="pBar"></i></div>
         <span class="pill" id="pAcc">—</span>
         <button class="btn line sm" onclick="openSheet()">答题卡</button>
-        <button class="btn line sm" onclick="quitPractice()">退出</button>
+        <button class="btn line sm" id="btnQuit" onclick="quitPractice()">退出</button>
       </div>
       <div class="qcard">
         <div class="qmeta">
@@ -696,6 +696,7 @@ function launch(list, scope, mode='practice', startIdx=null, opts){
   if(!ids.length){ alert('当前范围没有题目，请调整筛选条件。'); return; }
   S.list = ids; S.idx = 0; S.answers = {}; S.redo = {}; S.scope = scope; S.mode = mode;
   S.fresh = !!(opts && opts.fresh);      // true = 重新作答，不显示历史对错
+  S.origin = (opts && opts.origin) || 'home';   // 退出时回到哪一页
   S._prev = null;
   if(startIdx != null && startIdx >= 0 && startIdx < ids.length){
     S.idx = startIdx;                       // 从指定题进入（错题本/搜索结果）
@@ -726,7 +727,7 @@ function drillWrong(){
   const ids = currentWrongIds();
   if(!ids.length){ alert('错题本是空的，先去练习吧。'); return; }
   launch(ids.map(id=>Q.find(q=>q.id===id)).filter(Boolean),
-         (WFILTER==='all' ? '错题重练 · 历史卷 ' : '错题重练 · 新卷 ') + ids.length + ' 题', 'practice', 0, {fresh:true});
+         (WFILTER==='all' ? '错题重练 · 历史卷 ' : '错题重练 · 新卷 ') + ids.length + ' 题', 'practice', 0, {fresh:true, origin:'wrong'});
 }
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
@@ -774,6 +775,8 @@ function renderQ(){
   $('#btnFav').textContent = isFav(q.id) ? '★' : '☆';
 
   $('#btnSubmit').hidden = (S.mode!=='exam');
+  const qb = $('#btnQuit');
+  if(qb) qb.textContent = (S.origin==='wrong') ? '返回错题本' : (S.origin==='search' ? '返回搜索' : '退出');
   $('#btnPrev').disabled = (S.idx===0);
   $('#btnNext').disabled = (S.idx===S.list.length-1);
   $('#btnPrev').style.opacity = S.idx===0 ? .45 : 1;
@@ -855,7 +858,9 @@ function reveal(q, picked, silent, review){
 
 function quitPractice(){
   if(S.mode==='exam' && !confirm('模拟考尚未交卷，退出将不记录成绩，确定退出？')) return;
-  stopTimer(); go('home');
+  stopTimer();
+  const back = S.origin || 'home';
+  go(back);
 }
 function redoCurrent(){
   const q = cur();
@@ -950,7 +955,7 @@ function renderWrong(){
       <span style="color:${done?'#B26B00':'var(--red)'}">${myPick ? '你选 ' + myPick : '你选 —'}${done?'（后已答对）':''}</span>
       <span>正确 ${q.answer}</span>
       <span style="color:${done?'var(--green-d)':'var(--red)'}">${done?'已攻克':'待攻克'}</span></div>`;
-    el.onclick = ()=>launch(all, `错题重练 · 新卷 ${all.length} 题`, 'practice', idx, {fresh:true});
+    el.onclick = ()=>launch(all, `错题详情 · 共 ${all.length} 题`, 'practice', idx, {fresh:false, origin:'wrong'});
     box.appendChild(el);
   });
 }
@@ -1082,7 +1087,7 @@ function submitExam(){
     el.className='item';
     el.innerHTML = `<div class="t">${esc(q.stem).slice(0,110)}</div>
       <div class="m"><span>${esc(q.domain)}</span><span class="w">你选 ${S.answers[q.id]||'未答'}</span><span>正确 ${q.answer}</span></div>`;
-    el.onclick = ()=>launch(batch, `本次错题 · ${batch.length} 题`, 'practice', idx);
+    el.onclick = ()=>launch(batch, `本次错题 · ${batch.length} 题`, 'practice', idx, {origin:'result'});
     rw.appendChild(el);
   });
   go('result');
@@ -1122,7 +1127,7 @@ function doSearch(kw){
     el.className='item';
     el.innerHTML = `<div class="t">${esc(q.stem).slice(0,120)}</div>
       <div class="m"><span>${esc(q.domain)}</span><span>${esc(q.sec)} ${esc(q.topic)}</span><span>答案 ${q.answer}</span></div>`;
-    el.onclick = ()=>launch(hits, `搜索结果 · ${hits.length} 题`, 'practice', idx);
+    el.onclick = ()=>launch(hits, `搜索结果 · ${hits.length} 题`, 'practice', idx, {origin:'search'});
     box.appendChild(el);
   });
   go('search');
